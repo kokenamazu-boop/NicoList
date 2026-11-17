@@ -27,6 +27,8 @@ jobs:
             background.js \
             content.js \
             content-youtube.js \
+            content-search.js \
+            content-search.css \
             content.css \
             storage.js \
             popup.html \
