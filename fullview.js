@@ -86,16 +86,7 @@
   document.getElementById('btn-fv-play-shuffle').addEventListener('click', () => handlePlay(true));
   document.getElementById('btn-fv-refresh').addEventListener('click', handleRefreshVideos);
 
-  document.getElementById('btn-fv-load-code').addEventListener('click', () => {
-    showFvTextInputModal('共有コードを読み込む', '', '6桁のコードを入力', (val) => {
-      if (!val || val.length !== 6) {
-        showToast('無効なコードです');
-        return;
-      }
-      const url = chrome.runtime.getURL(`shared.html?c=${val}`);
-      window.open(url, '_blank');
-    });
-  });
+  // Fork版: 共有コード読込ボタンは無効化のため削除済み
 
   document.getElementById('btn-fv-export').addEventListener('click', handleExport);
   document.getElementById('input-fv-import').addEventListener('change', handleImport);
@@ -368,7 +359,6 @@
         <div class="fv-list-meta">${count}動画</div>
       </div>
       <div class="fv-list-actions">
-        <button class="fv-icon-btn btn-share" title="共有">${ICONS.share}</button>
         <button class="fv-icon-btn btn-rename" title="名前変更">${ICONS.edit}</button>
         <button class="fv-icon-btn btn-delete" style="color:var(--nl-danger);" title="削除">${ICONS.trash}</button>
       </div>
@@ -403,11 +393,7 @@
       }
     });
 
-    // v3.0: 共有ボタン
-    el.querySelector('.btn-share').addEventListener('click', async (e) => {
-      e.stopPropagation();
-      openShareModal(list.id, list.name);
-    });
+    // Fork版: 共有ボタンは無効化のため削除済み
 
     return el;
   }

@@ -17,7 +17,7 @@ import './storage.js';
 // ═════════════════════════════════════════════════════════════
 async function checkForUpdates() {
   try {
-    const res = await fetch('https://raw.githubusercontent.com/Hallkun19/NicoList/refs/heads/main/meta.yaml', { cache: 'no-store' });
+    const res = await fetch('https://raw.githubusercontent.com/kokenamazu-boop/NicoList/refs/heads/main/meta.yaml', { cache: 'no-store' });
     if (!res.ok) return;
     const text = await res.text();
 
@@ -50,7 +50,7 @@ async function checkForUpdates() {
           updateAvailable: {
             version: latestVersion,
             releaseNote: releaseNote,
-            url: 'https://github.com/Hallkun19/NicoList/releases/latest'
+            url: 'https://github.com/kokenamazu-boop/NicoList/releases/latest'
           }
         });
       } else {
@@ -989,48 +989,16 @@ async function refreshVideos(listId) {
 }
 
 // ═════════════════════════════════════════════════════════════
-//  クラウド共有（Cloudflare D1 バックエンド）
+//  クラウド共有（無効化済み）
 // ═════════════════════════════════════════════════════════════
-
-const SHARE_API_BASE = 'https://nicolist-share-api.halkun19.workers.dev';
+// Fork版では共有機能を無効化している。upstream の共有API
+// （友達の Cloudflare Worker）へは一切通信しない。
+// 呼び出し元が残っていても、ここで必ず無効化エラーを返す。
 
 async function createShareLink(data) {
-  try {
-    const body = JSON.stringify(data);
-    if (body.length > 500000) {
-      return { success: false, error: 'データサイズが大きすぎます（500KB制限）' };
-    }
-    const res = await fetch(`${SHARE_API_BASE}/api/share`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `HTTP ${res.status}`);
-    }
-    const json = await res.json();
-    return { success: true, id: json.id };
-  } catch (e) {
-    console.error('NicoList: クラウド共有リンク作成失敗', e);
-    return { success: false, error: e.message };
-  }
+  return { success: false, error: '共有機能は無効化されています（Fork版）' };
 }
 
 async function getSharedList(id) {
-  try {
-    if (!id || id.length > 10) {
-      return { success: false, error: '無効な共有コードです' };
-    }
-    const res = await fetch(`${SHARE_API_BASE}/api/share/${encodeURIComponent(id)}`);
-    if (res.status === 404) {
-      return { success: false, error: '共有コードが見つかりません（期限切れの可能性があります）' };
-    }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    return { success: true, data };
-  } catch (e) {
-    console.error('NicoList: クラウド共有リスト取得失敗', e);
-    return { success: false, error: e.message };
-  }
+  return { success: false, error: '共有機能は無効化されています（Fork版）' };
 }

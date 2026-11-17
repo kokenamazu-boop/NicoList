@@ -1,2 +1,2 @@
-version: "1.2.0"
-releaseNote: " SoundCloud及びBilibiliに完全に正式対応"
+version: "1.2.1"
+releaseNote: "Fork版: 共有機能を無効化、更新確認先を自分のForkへ変更"
