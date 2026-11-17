@@ -49,6 +49,21 @@
   document.getElementById('input-import-json').addEventListener('change', handleImport);
   document.getElementById('btn-import-mylist').addEventListener('click', handleMylistImport);
 
+  // マイリスト数フィルタの保存（Fork版で追加）
+  const btnSaveThreshold = document.getElementById('btn-save-mylist-threshold');
+  if (btnSaveThreshold) {
+    btnSaveThreshold.addEventListener('click', async () => {
+      const input = document.getElementById('input-mylist-threshold');
+      const status = document.getElementById('mylist-threshold-status');
+      const value = Math.max(0, parseInt(input.value, 10) || 0);
+      input.value = value;
+      const settings = await chrome.runtime.sendMessage({ action: 'getSettings' }) || {};
+      settings.mylistThreshold = value;
+      await chrome.runtime.sendMessage({ action: 'saveSettings', settings });
+      if (status) status.textContent = value > 0 ? `マイリスト数 ${value} 未満を非表示にします（開いている検索ページは再読み込みで反映）` : 'マイリスト数フィルタを無効にしました';
+    });
+  }
+
   // タグミュートの保存（Fork版で追加）
   const btnSaveMutedTags = document.getElementById('btn-save-muted-tags');
   if (btnSaveMutedTags) {
@@ -89,6 +104,11 @@
 
   async function loadSettings() {
     const settings = await chrome.runtime.sendMessage({ action: 'getSettings' }) || {};
+    // マイリスト数フィルタの復元（Fork版で追加）
+    const thresholdInput = document.getElementById('input-mylist-threshold');
+    if (thresholdInput) {
+      thresholdInput.value = settings.mylistThreshold || 0;
+    }
     // タグミュートの復元（Fork版で追加）
     const mutedTagsTextarea = document.getElementById('textarea-muted-tags');
     if (mutedTagsTextarea) {

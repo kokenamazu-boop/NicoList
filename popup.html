@@ -107,6 +107,15 @@
         <div id="muted-tags-status" class="status-msg"></div>
       </section>
       <section class="settings-section">
+        <h3>マイリスト数フィルタ</h3>
+        <p class="settings-desc">検索・タグページで、マイリスト数がこの数未満の動画を非表示にします。（0で無効）</p>
+        <div class="input-group">
+          <input type="number" id="input-mylist-threshold" min="0" step="1" placeholder="例：100">
+          <button id="btn-save-mylist-threshold" class="action-btn primary">保存</button>
+        </div>
+        <div id="mylist-threshold-status" class="status-msg"></div>
+      </section>
+      <section class="settings-section">
         <h3>マイリスト取り込み</h3>
         <p class="settings-desc">ニコニコ動画の既存マイリストをNicoListに取り込みます。（※公開設定のマイリストのみ）</p>
         <div class="input-group" style="margin-bottom: 8px;">

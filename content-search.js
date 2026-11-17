@@ -354,6 +354,8 @@
 
     countsFetching = true;
     try {
+      const settings = await getSettings();
+      const threshold = Math.max(0, parseInt(settings.mylistThreshold, 10) || 0);
       const ids = [...new Set(pending.map((r) => r.videoId))];
       const res = await chrome.runtime.sendMessage({ action: 'fetchVideoCountsBatch', videoIds: ids });
       const countsById = (res && res.countsById) || {};
@@ -361,6 +363,11 @@
       for (const r of pending) {
         const n = countsById[r.videoId];
         if (typeof n !== 'number') continue;
+        // 足切り：しきい値未満はカードごと隠す（数が取れない動画は隠さない）
+        if (threshold > 0 && n < threshold) {
+          hideCard(r.anchor);
+          continue;
+        }
         if (r.anchor.querySelector('.nl-mylist-badge')) continue;
         const badge = document.createElement('span');
         badge.className = 'nl-mylist-badge';
