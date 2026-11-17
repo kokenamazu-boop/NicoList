@@ -1,0 +1,167 @@
+/* ============================================================
+ * NicoList - 検索／タグページ対応（Fork版で追加）
+ * content-search.js 用のスタイル
+ * ============================================================ */
+
+/* サムネイルリンクをボタンの配置基準にする */
+.nl-search-anchor {
+  position: relative !important;
+}
+
+/* 追加ボタン: 公式ホバー欄（右端の縦並び）の左隣に、ホバー時だけ出す */
+.nl-search-add-btn {
+  position: absolute;
+  top: 6px;
+  right: 44px;
+  z-index: 50;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: rgba(20, 20, 20, 0.78);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.nl-search-anchor:hover .nl-search-add-btn,
+.nl-search-add-btn:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.nl-search-add-btn:hover {
+  background: #007cff;
+}
+
+/* 追加済み: 常時表示の緑チェック */
+.nl-search-add-btn.nl-added {
+  opacity: 1;
+  pointer-events: auto;
+  background: #00b06b;
+  cursor: default;
+}
+
+.nl-search-add-btn.nl-added:hover {
+  background: #00b06b;
+}
+
+/* トースト */
+.nl-search-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%) translateY(8px);
+  z-index: 999999;
+  max-width: 80vw;
+  padding: 10px 18px;
+  border-radius: 8px;
+  background: rgba(24, 24, 24, 0.95);
+  color: #f0f0f0;
+  font-size: 13px;
+  font-family: 'Segoe UI', 'Hiragino Sans', 'Meiryo', 'Yu Gothic', sans-serif;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.nl-search-toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* リスト選択モーダル */
+.nl-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  font-family: 'Segoe UI', 'Hiragino Sans', 'Meiryo', 'Yu Gothic', sans-serif;
+}
+
+.nl-picker-modal {
+  width: 320px;
+  max-width: 90vw;
+  max-height: 70vh;
+  overflow-y: auto;
+  border-radius: 10px;
+  background: #252525;
+  color: #e0e0e0;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6);
+  padding: 14px;
+}
+
+.nl-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.nl-picker-close {
+  border: none;
+  background: transparent;
+  color: #b0b0b0;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.nl-picker-close:hover {
+  color: #fff;
+}
+
+.nl-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nl-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  background: #2e2e2e;
+  color: #e0e0e0;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.nl-picker-item:hover {
+  background: #007cff;
+  color: #fff;
+}
+
+.nl-picker-count {
+  color: #808080;
+  font-size: 12px;
+}
+
+.nl-picker-item:hover .nl-picker-count {
+  color: #d6e9ff;
+}
+
+.nl-picker-empty {
+  font-size: 13px;
+  color: #b0b0b0;
+  line-height: 1.6;
+  padding: 8px 2px;
+}

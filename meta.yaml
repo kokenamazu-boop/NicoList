@@ -1,2 +1,2 @@
-version: "1.2.1"
-releaseNote: "Fork版: 共有機能を無効化、更新確認先を自分のForkへ変更"
+version: "1.2.2"
+releaseNote: "Fork版: 検索・タグページのサムネイルからNicoListへ追加できるボタンを追加"
