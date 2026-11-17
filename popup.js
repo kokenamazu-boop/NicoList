@@ -55,7 +55,7 @@
     btnSaveMutedTags.addEventListener('click', async () => {
       const textarea = document.getElementById('textarea-muted-tags');
       const status = document.getElementById('muted-tags-status');
-      const tags = [...new Set((textarea.value || '').split(/\n/).map(t => t.trim()).filter(Boolean))];
+      const tags = [...new Set((textarea.value || '').split(/[\n\s、,，]+/).map(t => t.trim()).filter(Boolean))];
       const settings = await chrome.runtime.sendMessage({ action: 'getSettings' }) || {};
       settings.mutedTags = tags;
       await chrome.runtime.sendMessage({ action: 'saveSettings', settings });
