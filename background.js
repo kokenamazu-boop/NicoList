@@ -132,6 +132,97 @@ async function cachedFetchVideoInfo(videoId, site, forceRefresh) {
   return info;
 }
 
+// ─── タグ取得（タグミュート用） ────────────────────────
+// スナップショット検索APIで複数動画のタグを一括取得し、24時間キャッシュする。
+// スナップショットで取れなかった動画だけ getthumbinfo で補う。
+const TAG_CACHE_TTL = 24 * 60 * 60 * 1000;
+
+async function getCachedTags(videoId) {
+  try {
+    const key = `vt_${videoId}`;
+    const data = await chrome.storage.local.get(key);
+    const entry = data[key];
+    if (entry && entry.cachedAt && (Date.now() - entry.cachedAt < TAG_CACHE_TTL)) {
+      return entry.tags;
+    }
+  } catch (e) { }
+  return null;
+}
+
+async function setCachedTags(videoId, tags) {
+  try {
+    await chrome.storage.local.set({ [`vt_${videoId}`]: { tags, cachedAt: Date.now() } });
+  } catch (e) { }
+}
+
+async function fetchTagsFromThumbinfo(videoId) {
+  try {
+    const res = await fetch(`https://ext.nicovideo.jp/api/getthumbinfo/${videoId}`);
+    if (!res.ok) return [];
+    const xml = await res.text();
+    const tags = [];
+    const re = /<tag[^>]*>([^<]+)<\/tag>/g;
+    let m;
+    while ((m = re.exec(xml)) !== null) {
+      const t = m[1].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
+      if (t) tags.push(t);
+    }
+    return tags;
+  } catch (e) { return []; }
+}
+
+async function fetchVideoTagsBatch(videoIds) {
+  const tagsById = {};
+  const missing = [];
+  const ids = [...new Set((videoIds || []).filter(Boolean))];
+  for (const id of ids) {
+    const cached = await getCachedTags(id);
+    if (cached !== null) tagsById[id] = cached;
+    else missing.push(id);
+  }
+
+  // スナップショット検索APIで一括取得（50件ずつ）
+  const unresolved = [];
+  for (let i = 0; i < missing.length; i += 50) {
+    const chunk = missing.slice(i, i + 50);
+    const found = {};
+    try {
+      const params = new URLSearchParams({
+        targets: 'title',
+        fields: 'contentId,tags',
+        _context: 'NicoList', q: '', _limit: String(chunk.length), _offset: '0', _sort: '-viewCounter'
+      });
+      chunk.forEach((id, idx) => params.set(`filters[contentId][${idx}]`, id));
+      const res = await fetch(`https://snapshot.search.nicovideo.jp/api/v2/snapshot/video/contents/search?${params}`);
+      if (res.ok) {
+        const json = await res.json();
+        for (const item of (json.data || [])) {
+          if (item && item.contentId) {
+            found[item.contentId] = String(item.tags || '').split(/\s+/).filter(Boolean);
+          }
+        }
+      }
+    } catch (e) { }
+    for (const id of chunk) {
+      if (id in found) {
+        tagsById[id] = found[id];
+        await setCachedTags(id, found[id]);
+      } else {
+        unresolved.push(id);
+      }
+    }
+  }
+
+  // 取れなかった動画だけ getthumbinfo で補う
+  for (const id of unresolved) {
+    const tags = await fetchTagsFromThumbinfo(id);
+    tagsById[id] = tags;
+    await setCachedTags(id, tags);
+  }
+
+  return { success: true, tagsById };
+}
+
 // ─── タブ閉じ時に連続再生を自動停止 ─────────────────────
 chrome.tabs.onRemoved.addListener(async (tabId) => {
   try {
@@ -188,6 +279,7 @@ async function handleMessage(msg, sender) {
 
     // ─── 動画情報取得（API） ────────────────────
     case 'fetchVideoInfo': return await cachedFetchVideoInfo(msg.videoId, 'niconico', msg.forceRefresh);
+    case 'fetchVideoTagsBatch': return await fetchVideoTagsBatch(msg.videoIds);
     case 'fetchYouTubeVideoInfo': return await cachedFetchVideoInfo(msg.videoId, 'youtube', msg.forceRefresh);
     case 'fetchBilibiliVideoInfo': return await cachedFetchVideoInfo(msg.videoId, 'bilibili', msg.forceRefresh);
     case 'fetchSoundCloudVideoInfo': return await cachedFetchVideoInfo(msg.videoId, 'soundcloud', msg.forceRefresh);

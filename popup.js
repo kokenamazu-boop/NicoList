@@ -48,6 +48,20 @@
   document.getElementById('btn-export-json').addEventListener('click', handleExport);
   document.getElementById('input-import-json').addEventListener('change', handleImport);
   document.getElementById('btn-import-mylist').addEventListener('click', handleMylistImport);
+
+  // タグミュートの保存（Fork版で追加）
+  const btnSaveMutedTags = document.getElementById('btn-save-muted-tags');
+  if (btnSaveMutedTags) {
+    btnSaveMutedTags.addEventListener('click', async () => {
+      const textarea = document.getElementById('textarea-muted-tags');
+      const status = document.getElementById('muted-tags-status');
+      const tags = [...new Set((textarea.value || '').split(/\n/).map(t => t.trim()).filter(Boolean))];
+      const settings = await chrome.runtime.sendMessage({ action: 'getSettings' }) || {};
+      settings.mutedTags = tags;
+      await chrome.runtime.sendMessage({ action: 'saveSettings', settings });
+      if (status) status.textContent = tags.length ? `${tags.length}件のタグを保存しました（開いている検索ページは再読み込みで反映）` : 'ミュートタグを空にしました';
+    });
+  }
   document.getElementById('btn-fullview').addEventListener('click', async () => {
     await chrome.runtime.sendMessage({ action: 'openFullView' });
     window.close();
@@ -75,6 +89,11 @@
 
   async function loadSettings() {
     const settings = await chrome.runtime.sendMessage({ action: 'getSettings' }) || {};
+    // タグミュートの復元（Fork版で追加）
+    const mutedTagsTextarea = document.getElementById('textarea-muted-tags');
+    if (mutedTagsTextarea) {
+      mutedTagsTextarea.value = (settings.mutedTags || []).join('\n');
+    }
     // クイック追加モードの復元
     if (quickAddModeSelect) {
       quickAddModeSelect.value = settings.quickAddMode || 'dblclick';
