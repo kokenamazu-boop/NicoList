@@ -171,6 +171,52 @@ async function fetchTagsFromThumbinfo(videoId) {
   } catch (e) { return []; }
 }
 
+// ─── マイリスト数の一括取得（検索ページの表示用） ──────
+// スナップショット検索APIで mylistCounter を一括取得し、24時間キャッシュする。
+async function fetchVideoCountsBatch(videoIds) {
+  const countsById = {};
+  const missing = [];
+  const ids = [...new Set((videoIds || []).filter(Boolean))];
+  for (const id of ids) {
+    const key = `mc_${id}`;
+    try {
+      const data = await chrome.storage.local.get(key);
+      const entry = data[key];
+      if (entry && entry.cachedAt && (Date.now() - entry.cachedAt < TAG_CACHE_TTL)) {
+        countsById[id] = entry.mylistCount;
+        continue;
+      }
+    } catch (e) { }
+    missing.push(id);
+  }
+
+  for (let i = 0; i < missing.length; i += 50) {
+    const chunk = missing.slice(i, i + 50);
+    try {
+      const params = new URLSearchParams({
+        targets: 'title',
+        fields: 'contentId,mylistCounter',
+        _context: 'NicoList', q: '', _limit: String(chunk.length), _offset: '0', _sort: '-viewCounter'
+      });
+      chunk.forEach((id, idx) => params.set(`filters[contentId][${idx}]`, id));
+      const res = await fetch(`https://snapshot.search.nicovideo.jp/api/v2/snapshot/video/contents/search?${params}`);
+      if (res.ok) {
+        const json = await res.json();
+        for (const item of (json.data || [])) {
+          if (item && item.contentId && typeof item.mylistCounter === 'number') {
+            countsById[item.contentId] = item.mylistCounter;
+            try {
+              await chrome.storage.local.set({ [`mc_${item.contentId}`]: { mylistCount: item.mylistCounter, cachedAt: Date.now() } });
+            } catch (e) { }
+          }
+        }
+      }
+    } catch (e) { }
+  }
+
+  return { success: true, countsById };
+}
+
 async function fetchVideoTagsBatch(videoIds) {
   const tagsById = {};
   const missing = [];
@@ -280,6 +326,7 @@ async function handleMessage(msg, sender) {
     // ─── 動画情報取得（API） ────────────────────
     case 'fetchVideoInfo': return await cachedFetchVideoInfo(msg.videoId, 'niconico', msg.forceRefresh);
     case 'fetchVideoTagsBatch': return await fetchVideoTagsBatch(msg.videoIds);
+    case 'fetchVideoCountsBatch': return await fetchVideoCountsBatch(msg.videoIds);
     case 'fetchYouTubeVideoInfo': return await cachedFetchVideoInfo(msg.videoId, 'youtube', msg.forceRefresh);
     case 'fetchBilibiliVideoInfo': return await cachedFetchVideoInfo(msg.videoId, 'bilibili', msg.forceRefresh);
     case 'fetchSoundCloudVideoInfo': return await cachedFetchVideoInfo(msg.videoId, 'soundcloud', msg.forceRefresh);

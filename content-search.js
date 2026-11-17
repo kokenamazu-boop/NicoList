@@ -284,6 +284,7 @@
       injectButton(a);
     });
     applyMutes();
+    applyCounts();
   }
 
   // ─── タグミュート（Fork版で追加） ───────────────────
@@ -338,6 +339,38 @@
       // 取得に失敗した時は隠さない（次回のスキャンで再試行する）
     } finally {
       muteFetching = false;
+    }
+  }
+
+  // ─── マイリスト数の表示（Fork版で追加） ─────────────
+  // サムネイル左下に「マイリスト N」のバッジを重ねる（クリックは透過）。
+  const countsChecked = new Set();
+  let countsFetching = false;
+
+  async function applyCounts() {
+    if (countsFetching) return;
+    const pending = injected.filter((r) => !countsChecked.has(r.videoId) && !r.anchor.querySelector('.nl-mylist-badge'));
+    if (!pending.length) return;
+
+    countsFetching = true;
+    try {
+      const ids = [...new Set(pending.map((r) => r.videoId))];
+      const res = await chrome.runtime.sendMessage({ action: 'fetchVideoCountsBatch', videoIds: ids });
+      const countsById = (res && res.countsById) || {};
+      ids.forEach((id) => countsChecked.add(id));
+      for (const r of pending) {
+        const n = countsById[r.videoId];
+        if (typeof n !== 'number') continue;
+        if (r.anchor.querySelector('.nl-mylist-badge')) continue;
+        const badge = document.createElement('span');
+        badge.className = 'nl-mylist-badge';
+        badge.textContent = `マイリスト ${n.toLocaleString('ja-JP')}`;
+        r.anchor.appendChild(badge);
+      }
+    } catch (e) {
+      // 取得に失敗した時は表示しない（次回のスキャンで再試行する）
+    } finally {
+      countsFetching = false;
     }
   }
 

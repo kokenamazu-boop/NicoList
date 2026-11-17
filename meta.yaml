@@ -1,2 +1,2 @@
-version: "1.2.5"
-releaseNote: "Fork版: ミュートタグの書き方を拡張（スペース・カンマ区切りでも複数指定可能に）"
+version: "1.2.6"
+releaseNote: "Fork版: 検索・タグページのサムネイルにマイリスト数を表示"
