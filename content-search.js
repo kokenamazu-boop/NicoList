@@ -256,6 +256,8 @@
     const href = anchor.getAttribute('href') || anchor.href || '';
     // ニコニコ内の watch リンクだけを対象にする（広告などの外部リンクを除外）
     if (!href.startsWith('/watch/') && !href.includes('nicovideo.jp/watch/')) return;
+    // 連続再生リンクは通常の動画リンクと重複するので対象外
+    if (/[?&](continuous|playlist)=/.test(href)) return;
     const m = href.match(WATCH_RE);
     if (!m) return;
     const videoId = m[1];
@@ -271,7 +273,17 @@
     btn.innerHTML = ICON_PLUS;
     btn.addEventListener('click', onBtnClick);
     btn.addEventListener('contextmenu', onBtnContextMenu);
-    anchor.appendChild(btn);
+    // あとで見るでは行全体がリンクでボタンが文章に重なるため、サムネイルの上に置く
+    let host = anchor;
+    if (IS_WATCH_LATER) {
+      const thumb = anchor.querySelector(THUMB_SEL);
+      if (thumb) {
+        host = thumb.tagName === 'IMG' ? (thumb.parentElement || anchor) : thumb;
+        host.classList.add('nl-thumb-host');
+        btn.classList.add('nl-on-thumb');
+      }
+    }
+    host.appendChild(btn);
     injected.push({ anchor, btn, videoId });
 
     checkAddedState(btn, videoId);
@@ -297,35 +309,6 @@
     };
     walkRoot(document);
     return out;
-  }
-
-  // あとで見るページの切り分け用: ページ構造の数え上げをバーの下に表示する
-  function collectDiagnostics() {
-    const parts = [];
-    try {
-      const all = document.querySelectorAll('a');
-      let watch = 0, withImg = 0;
-      all.forEach((a) => {
-        const href = a.getAttribute('href') || a.href || '';
-        if (href.includes('/watch/')) { watch++; if (hasThumbOrHeading(a)) withImg++; }
-      });
-      parts.push(`a=${all.length} watch=${watch} img=${withImg}`);
-      const frames = document.querySelectorAll('iframe');
-      parts.push(`frame=${frames.length}`);
-      frames.forEach((f, i) => {
-        if (i < 2) parts.push(`src${i + 1}=${(f.getAttribute('src') || '(なし)').slice(0, 70)}`);
-      });
-      let shadow = 0, custom = 0;
-      document.querySelectorAll('*').forEach((el) => {
-        if (el.shadowRoot) shadow++;
-        if (el.tagName && el.tagName.includes('-')) custom++;
-      });
-      parts.push(`shadow=${shadow} custom=${custom}`);
-      parts.push(`top=${window.top === window ? 'yes' : 'no'} path=${location.pathname}`);
-    } catch (e) {
-      parts.push('診断エラー');
-    }
-    return parts.join(' ');
   }
 
   // サムネイル相当の要素か見出しを含むリンクか（あとで見るの行リンク判定に使う。
@@ -491,16 +474,11 @@
       btn.className = 'nl-bulk-btn';
       btn.addEventListener('click', openBulkPicker);
       bar.appendChild(btn);
-      const dbg = document.createElement('div');
-      dbg.className = 'nl-bulk-debug';
-      bar.appendChild(dbg);
       document.body.appendChild(bar);
     }
     if (!bulkRunning) {
       btn.textContent = `このページの動画をNicoListへ一括追加（${injected.length}件）`;
     }
-    const dbg = document.querySelector('.nl-bulk-debug');
-    if (dbg) dbg.textContent = collectDiagnostics();
   }
 
   async function addQuiet(btn, videoId, listId) {
