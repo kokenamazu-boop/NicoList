@@ -283,9 +283,11 @@
       if (!a.querySelector('img')) return; // サムネイルリンクだけ（タイトルリンクは除外）
       injectButton(a);
     });
-    applyMutes();
-    applyCounts();
+    evaluationPromise = Promise.all([applyMutes(), applyCounts()]);
+    maybeBackfill();
   }
+
+  let evaluationPromise = null;
 
   // ─── タグミュート（Fork版で追加） ───────────────────
   // 設定の mutedTags と各動画のタグを照合し、当てはまったカードを完全に隠す。
@@ -296,37 +298,40 @@
     return String(t || '').trim().toLowerCase();
   }
 
-  function hideCard(anchor) {
-    // サムネイルリンクを1つだけ含む一番上の祖先＝カード全体とみなして隠す
+  // サムネイルリンクを1つだけ含む一番上の祖先＝カード全体
+  function findCard(anchor) {
     let card = anchor;
     let el = anchor;
     for (let i = 0; i < 6 && el.parentElement; i++) {
       const parent = el.parentElement;
+      if (parent.tagName === 'BODY' || parent.tagName === 'HTML') break;
       const thumbs = Array.from(parent.querySelectorAll('a[href*="/watch/"]'))
         .filter((a) => a.querySelector('img'));
       if (thumbs.length !== 1) break;
       card = parent;
       el = parent;
     }
+    return card;
+  }
+
+  function hideCard(anchor) {
+    const card = findCard(anchor);
     card.style.display = 'none';
     card.dataset.nlMuted = '1';
   }
 
   async function applyMutes() {
     if (muteFetching) return;
-    let settings;
-    try {
-      settings = await getSettings();
-    } catch (e) { return; }
-    const muted = (settings.mutedTags || []).map(normalizeTag).filter(Boolean);
-    if (!muted.length) return;
-    const mutedSet = new Set(muted);
-
-    const pending = injected.filter((r) => !muteChecked.has(r.videoId));
-    if (!pending.length) return;
-
     muteFetching = true;
     try {
+      const settings = await getSettings();
+      const muted = (settings.mutedTags || []).map(normalizeTag).filter(Boolean);
+      if (!muted.length) return;
+      const mutedSet = new Set(muted);
+
+      const pending = injected.filter((r) => !muteChecked.has(r.videoId));
+      if (!pending.length) return;
+
       const ids = [...new Set(pending.map((r) => r.videoId))];
       const res = await chrome.runtime.sendMessage({ action: 'fetchVideoTagsBatch', videoIds: ids });
       const tagsById = (res && res.tagsById) || {};
@@ -349,11 +354,11 @@
 
   async function applyCounts() {
     if (countsFetching) return;
-    const pending = injected.filter((r) => !countsChecked.has(r.videoId) && !r.anchor.querySelector('.nl-mylist-badge'));
-    if (!pending.length) return;
-
     countsFetching = true;
     try {
+      const pending = injected.filter((r) => !countsChecked.has(r.videoId) && !r.anchor.querySelector('.nl-mylist-badge'));
+      if (!pending.length) { return; }
+
       const settings = await getSettings();
       const threshold = Math.max(0, parseInt(settings.mylistThreshold, 10) || 0);
       const ids = [...new Set(pending.map((r) => r.videoId))];
@@ -378,6 +383,147 @@
       // 取得に失敗した時は表示しない（次回のスキャンで再試行する）
     } finally {
       countsFetching = false;
+    }
+  }
+
+  // ─── 補充表示（Fork版で追加） ───────────────────────
+  // フィルタで隠れた分を、次のページから条件を通った動画で補充する。
+  // 次ページのHTMLを取得してカードを移植する方式（最大5ページ先まで）。
+  const backfillState = { key: null, running: false, done: false };
+  const BACKFILL_MAX_PAGES = 5;
+
+  function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+  function currentPageNumber() {
+    const m = /[?&]page=(\d+)/.exec(location.search || '');
+    return m ? parseInt(m[1], 10) : 1;
+  }
+
+  function pageUrl(n) {
+    const u = new URL(location.href);
+    u.searchParams.set('page', String(n));
+    return u.toString();
+  }
+
+  async function waitForEvaluations() {
+    for (let i = 0; i < 40; i++) {
+      if (!muteFetching && !countsFetching) return;
+      await sleep(100);
+    }
+  }
+
+  function extractCards(doc) {
+    const out = [];
+    const seenCards = new Set();
+    const anchors = doc.querySelectorAll('a[href*="/watch/"]');
+    anchors.forEach((a) => {
+      if (!a.querySelector('img')) return;
+      const href = a.getAttribute('href') || '';
+      if (!href.startsWith('/watch/') && !href.includes('nicovideo.jp/watch/')) return;
+      const m = href.match(WATCH_RE);
+      if (!m) return;
+      const videoId = m[1];
+      const card = findCard(a);
+      if (seenCards.has(card)) return;
+      seenCards.add(card);
+      out.push({ card, videoId });
+    });
+    return out;
+  }
+
+  async function maybeBackfill() {
+    const key = location.href;
+    if (backfillState.key !== key) {
+      backfillState.key = key;
+      backfillState.done = false;
+    }
+    if (backfillState.done || backfillState.running) return;
+
+    let settings;
+    try {
+      settings = await getSettings();
+    } catch (e) { return; }
+    const mutedTags = (settings.mutedTags || []).map(normalizeTag).filter(Boolean);
+    const hasMute = mutedTags.length > 0;
+    const threshold = Math.max(0, parseInt(settings.mylistThreshold, 10) || 0);
+    if (!hasMute && threshold === 0) {
+      backfillState.done = true;
+      return;
+    }
+
+    if (evaluationPromise) {
+      try { await evaluationPromise; } catch (e) { }
+    }
+    await waitForEvaluations();
+    if (backfillState.running) return;
+
+    // 現在のページのカード総数と表示中の数
+    const cardSet = new Set();
+    for (const r of injected) cardSet.add(findCard(r.anchor));
+    const totalCards = cardSet.size;
+    if (!totalCards) { backfillState.done = true; return; }
+    let visible = 0;
+    cardSet.forEach((c) => { if (c.style.display !== 'none') visible++; });
+    if (visible >= totalCards) { backfillState.done = true; return; }
+
+    const firstCard = [...cardSet][0];
+    const container = firstCard && firstCard.parentElement;
+    if (!container) { backfillState.done = true; return; }
+
+    backfillState.running = true;
+    try {
+      const seenIds = new Set(injected.map((r) => r.videoId));
+      const mutedSet = new Set(mutedTags);
+      let nextPage = currentPageNumber() + 1;
+      let fetched = 0;
+
+      while (visible < totalCards && fetched < BACKFILL_MAX_PAGES) {
+        let html;
+        try {
+          const res = await fetch(pageUrl(nextPage), { credentials: 'include' });
+          if (!res.ok) break;
+          html = await res.text();
+        } catch (e) { break; }
+        fetched++;
+        nextPage++;
+
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const candidates = extractCards(doc).filter((c) => !seenIds.has(c.videoId));
+        if (!candidates.length) break;
+        candidates.forEach((c) => seenIds.add(c.videoId));
+
+        const ids = candidates.map((c) => c.videoId);
+        let tagsById = {};
+        let countsById = {};
+        if (hasMute) {
+          const tr = await chrome.runtime.sendMessage({ action: 'fetchVideoTagsBatch', videoIds: ids });
+          tagsById = (tr && tr.tagsById) || {};
+        }
+        if (threshold > 0) {
+          const cr = await chrome.runtime.sendMessage({ action: 'fetchVideoCountsBatch', videoIds: ids });
+          countsById = (cr && cr.countsById) || {};
+        }
+
+        for (const c of candidates) {
+          if (visible >= totalCards) break;
+          if (hasMute) {
+            const tags = (tagsById[c.videoId] || []).map(normalizeTag);
+            if (tags.some((t) => mutedSet.has(t))) continue;
+          }
+          if (threshold > 0) {
+            const n = countsById[c.videoId];
+            if (typeof n === 'number' && n < threshold) continue;
+          }
+          container.appendChild(c.card);
+          visible++;
+        }
+      }
+      backfillState.done = true;
+    } catch (e) {
+      // 補充に失敗しても、通常の表示はそのまま維持する
+      backfillState.done = true;
+    } finally {
+      backfillState.running = false;
     }
   }
 
