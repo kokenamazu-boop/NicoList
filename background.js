@@ -579,8 +579,9 @@ async function exportAll() {
   try {
     const data = await nicoListStorage.exportAll();
     return new Promise((resolve) => {
-      chrome.storage.local.get('listOrder', (res) => {
+      chrome.storage.local.get(['listOrder', 'nicolistSettings'], (res) => {
         data.listOrder = res.listOrder || [];
+        if (res.nicolistSettings) data.settings = res.nicolistSettings;
         resolve(data);
       });
     });
@@ -592,9 +593,12 @@ async function exportAll() {
 async function importData(data, overwrite = false) {
   try {
     const res = await nicoListStorage.importData(data, overwrite);
-    if (data.listOrder && overwrite) {
+    if (overwrite && (data.listOrder || data.settings)) {
       return new Promise((resolve) => {
-        chrome.storage.local.set({ listOrder: data.listOrder }, () => {
+        const patch = {};
+        if (data.listOrder) patch.listOrder = data.listOrder;
+        if (data.settings) patch.nicolistSettings = data.settings;
+        chrome.storage.local.set(patch, () => {
           resolve(res);
         });
       });
