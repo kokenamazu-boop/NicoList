@@ -1,7 +1,8 @@
 {
   "manifest_version": 3,
   "name": "NicoList - 動画リスト拡張",
-  "version": "1.2.15",
+  "version": "1.2.16",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzE1Dr6/YdIfS29d2BveprcJzNvDgpH0yi/6e7V9OJbsBi1rc/Q/KJkrhUaq7B9y7Md9tzNTMXbULvhDp7LCMOAN+K5OosIUDQFT/YOpYGVkFhCRKZ7P3eSPhpCNXNGstlj5JpAv4+HV4vclJ1vnT3zK91/JzcFUooEfFzcsZqSeqiSXdi5efO/4m7shs8dMcGWaOOMLy9F5ARCwAkGdhWbJZBDeKVhCum9dZLSqOQQCwqW+S71/T3pWObuggbE0pZdc0HePzx07omSk8biW9vCk7xE9+rsr0th/BO73jIj/hnN7qgtyXhdLm2FSpBVfNYd2//9qn+iPkA1rQZUGz9wIDAQAB",
   "description": "ニコニコ動画・YouTubeのマイリスト機能を拡張・強化する Chrome 拡張機能",
   "permissions": [
     "storage",
@@ -24,6 +25,13 @@
   "background": {
     "service_worker": "background.js",
     "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
   },
   "content_scripts": [
     {
@@ -73,13 +81,6 @@
       "match_about_blank": true
     }
   ],
-  "action": {
-    "default_popup": "popup.html",
-    "default_icon": {
-      "16": "icons/icon16.png",
-      "32": "icons/icon32.png"
-    }
-  },
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
