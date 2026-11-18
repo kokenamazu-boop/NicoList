@@ -215,6 +215,22 @@
   right: 20px;
   bottom: 20px;
   z-index: 999990;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.nl-bulk-debug {
+  max-width: 430px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.8);
+  color: #ffd76a;
+  font-size: 11px;
+  line-height: 1.5;
+  font-family: Consolas, 'Courier New', monospace;
+  word-break: break-all;
 }
 
 .nl-bulk-btn {

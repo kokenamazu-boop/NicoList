@@ -1,2 +1,2 @@
-version: "1.2.12"
-releaseNote: "Fork版: あとで見るページで表示されない問題への対応（全フレーム実行・/my/ 配下への対象拡大・シャドウDOM内の走査・一括追加バーの常時表示）"
+version: "1.2.13"
+releaseNote: "Fork版: あとで見るページでリンクが0件になる問題の診断表示を追加（リンク数・iframe・シャドウDOMの数などをバーに表示）。hrefプロパティ照合の予備検出と match_about_blank も追加"

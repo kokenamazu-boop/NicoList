@@ -253,7 +253,7 @@
   // ─── ボタンの注入 ───────────────────────────────────
   function injectButton(anchor) {
     if (anchor.dataset.nlSearchInjected) return;
-    const href = anchor.getAttribute('href') || '';
+    const href = anchor.getAttribute('href') || anchor.href || '';
     // ニコニコ内の watch リンクだけを対象にする（広告などの外部リンクを除外）
     if (!href.startsWith('/watch/') && !href.includes('nicovideo.jp/watch/')) return;
     const m = href.match(WATCH_RE);
@@ -280,9 +280,16 @@
   // 通常のDOMに加えて、開いているシャドウDOMの中までリンクを探す
   function collectAnchors() {
     const out = [];
+    const seen = new Set();
+    const push = (a) => { if (!seen.has(a)) { seen.add(a); out.push(a); } };
     const walkRoot = (root) => {
       try {
-        root.querySelectorAll('a[href*="/watch/"]').forEach((a) => out.push(a));
+        root.querySelectorAll('a[href*="/watch/"]').forEach(push);
+        // 予備: 属性で拾えない場合は解決済みURL（hrefプロパティ）でも照合する
+        root.querySelectorAll('a').forEach((a) => {
+          const resolved = a.href || '';
+          if (resolved.includes('nicovideo.jp/watch/')) push(a);
+        });
         root.querySelectorAll('*').forEach((el) => {
           if (el.shadowRoot) walkRoot(el.shadowRoot);
         });
@@ -290,6 +297,35 @@
     };
     walkRoot(document);
     return out;
+  }
+
+  // あとで見るページの切り分け用: ページ構造の数え上げをバーの下に表示する
+  function collectDiagnostics() {
+    const parts = [];
+    try {
+      const all = document.querySelectorAll('a');
+      let watch = 0, withImg = 0;
+      all.forEach((a) => {
+        const href = a.getAttribute('href') || a.href || '';
+        if (href.includes('/watch/')) { watch++; if (a.querySelector('img')) withImg++; }
+      });
+      parts.push(`a=${all.length} watch=${watch} img=${withImg}`);
+      const frames = document.querySelectorAll('iframe');
+      parts.push(`frame=${frames.length}`);
+      frames.forEach((f, i) => {
+        if (i < 2) parts.push(`src${i + 1}=${(f.getAttribute('src') || '(なし)').slice(0, 70)}`);
+      });
+      let shadow = 0, custom = 0;
+      document.querySelectorAll('*').forEach((el) => {
+        if (el.shadowRoot) shadow++;
+        if (el.tagName && el.tagName.includes('-')) custom++;
+      });
+      parts.push(`shadow=${shadow} custom=${custom}`);
+      parts.push(`top=${window.top === window ? 'yes' : 'no'} path=${location.pathname}`);
+    } catch (e) {
+      parts.push('診断エラー');
+    }
+    return parts.join(' ');
   }
 
   function scan() {
@@ -444,11 +480,16 @@
       btn.className = 'nl-bulk-btn';
       btn.addEventListener('click', openBulkPicker);
       bar.appendChild(btn);
+      const dbg = document.createElement('div');
+      dbg.className = 'nl-bulk-debug';
+      bar.appendChild(dbg);
       document.body.appendChild(bar);
     }
     if (!bulkRunning) {
       btn.textContent = `このページの動画をNicoListへ一括追加（${injected.length}件）`;
     }
+    const dbg = document.querySelector('.nl-bulk-debug');
+    if (dbg) dbg.textContent = collectDiagnostics();
   }
 
   async function addQuiet(btn, videoId, listId) {
