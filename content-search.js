@@ -307,7 +307,7 @@
       let watch = 0, withImg = 0;
       all.forEach((a) => {
         const href = a.getAttribute('href') || a.href || '';
-        if (href.includes('/watch/')) { watch++; if (a.querySelector('img')) withImg++; }
+        if (href.includes('/watch/')) { watch++; if (hasThumbOrHeading(a)) withImg++; }
       });
       parts.push(`a=${all.length} watch=${watch} img=${withImg}`);
       const frames = document.querySelectorAll('iframe');
@@ -328,10 +328,21 @@
     return parts.join(' ');
   }
 
+  // サムネイル相当の要素か見出しを含むリンクか（あとで見るの行リンク判定に使う。
+  // あとで見るのサムネイルは img 要素ではなく、img だけでは1件も拾えない）
+  const THUMB_SEL = 'img, picture, canvas, svg, [role="img"]';
+  function hasThumbOrHeading(a) {
+    return !!(a.querySelector(THUMB_SEL) || a.querySelector('h1, h2, h3, h4, h5, h6'));
+  }
+
   function scan() {
     const anchors = collectAnchors();
     anchors.forEach((a) => {
-      if (!a.querySelector('img')) return; // サムネイルリンクだけ（タイトルリンクは除外）
+      if (IS_WATCH_LATER) {
+        if (!hasThumbOrHeading(a)) return; // 行リンクだけ（連続再生などのテキストリンクを除外）
+      } else if (!a.querySelector('img')) {
+        return; // サムネイルリンクだけ（タイトルリンクは除外）
+      }
       injectButton(a);
     });
     if (IS_WATCH_LATER) {
