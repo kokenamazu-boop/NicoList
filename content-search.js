@@ -277,8 +277,23 @@
     checkAddedState(btn, videoId);
   }
 
+  // 通常のDOMに加えて、開いているシャドウDOMの中までリンクを探す
+  function collectAnchors() {
+    const out = [];
+    const walkRoot = (root) => {
+      try {
+        root.querySelectorAll('a[href*="/watch/"]').forEach((a) => out.push(a));
+        root.querySelectorAll('*').forEach((el) => {
+          if (el.shadowRoot) walkRoot(el.shadowRoot);
+        });
+      } catch (e) { /* 読めないルートは飛ばす */ }
+    };
+    walkRoot(document);
+    return out;
+  }
+
   function scan() {
-    const anchors = document.querySelectorAll('a[href*="/watch/"]');
+    const anchors = collectAnchors();
     anchors.forEach((a) => {
       if (!a.querySelector('img')) return; // サムネイルリンクだけ（タイトルリンクは除外）
       injectButton(a);
@@ -420,17 +435,20 @@
   let bulkRunning = false;
 
   function ensureBulkBar() {
-    if (document.querySelector('.nl-bulk-bar')) return;
-    if (!injected.length) return;
-    const bar = document.createElement('div');
-    bar.className = 'nl-bulk-bar';
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'nl-bulk-btn';
-    btn.textContent = 'このページの動画をNicoListへ一括追加';
-    btn.addEventListener('click', openBulkPicker);
-    bar.appendChild(btn);
-    document.body.appendChild(bar);
+    let btn = document.querySelector('.nl-bulk-btn');
+    if (!btn) {
+      const bar = document.createElement('div');
+      bar.className = 'nl-bulk-bar';
+      btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'nl-bulk-btn';
+      btn.addEventListener('click', openBulkPicker);
+      bar.appendChild(btn);
+      document.body.appendChild(bar);
+    }
+    if (!bulkRunning) {
+      btn.textContent = `このページの動画をNicoListへ一括追加（${injected.length}件）`;
+    }
   }
 
   async function addQuiet(btn, videoId, listId) {
@@ -448,6 +466,10 @@
 
   async function openBulkPicker() {
     if (bulkRunning) return;
+    if (!injected.length) {
+      showToast('このページで動画リンクが見つかりませんでした');
+      return;
+    }
     closePicker();
     const lists = await chrome.runtime.sendMessage({ action: 'getAllLists' }) || [];
     const overlay = document.createElement('div');
@@ -522,7 +544,7 @@
       showToast(`一括追加が終わりました：${added}件を追加、${exists}件は追加済み、${failed}件は失敗`);
     } finally {
       bulkRunning = false;
-      if (btn) btn.textContent = 'このページの動画をNicoListへ一括追加';
+      if (btn) btn.textContent = `このページの動画をNicoListへ一括追加（${injected.length}件）`;
     }
   }
 
