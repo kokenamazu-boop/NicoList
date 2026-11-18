@@ -208,3 +208,28 @@
   white-space: nowrap;
 }
 
+
+/* あとで見るページの一括追加バー */
+.nl-bulk-bar {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 999990;
+}
+
+.nl-bulk-btn {
+  padding: 12px 18px;
+  border: none;
+  border-radius: 8px;
+  background: #007cff;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: 'Segoe UI', 'Hiragino Sans', 'Meiryo', 'Yu Gothic', sans-serif;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+
+.nl-bulk-btn:hover {
+  background: #0063cc;
+}

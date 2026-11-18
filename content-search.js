@@ -283,9 +283,16 @@
       if (!a.querySelector('img')) return; // サムネイルリンクだけ（タイトルリンクは除外）
       injectButton(a);
     });
-    applyMutes();
-    applyCounts();
+    if (IS_WATCH_LATER) {
+      ensureBulkBar();
+    } else {
+      applyMutes();
+      applyCounts();
+      applyAds();
+    }
   }
+
+  const IS_WATCH_LATER = (location.pathname || '').startsWith('/my/watchlater');
 
   // ─── タグミュート（Fork版で追加） ───────────────────
   // 設定の mutedTags と各動画のタグを照合し、当てはまったカードを完全に隠す。
@@ -345,6 +352,31 @@
     }
   }
 
+  // ─── ニコニ広告を隠す（Fork版で追加） ───────────────
+  // 広告カードには「提供：」の表示があり、通常カードには無いことで判別する
+  let adsFetching = false;
+  async function applyAds() {
+    if (adsFetching) return;
+    adsFetching = true;
+    try {
+      const settings = await getSettings();
+      if (settings.hideAds === false) return;
+      for (const r of injected) {
+        const card = findCard(r.anchor);
+        if (!card || card.dataset.nlAdChecked) continue;
+        card.dataset.nlAdChecked = '1';
+        if (/提供[:：]/.test(card.textContent || '')) {
+          card.style.display = 'none';
+          card.dataset.nlAd = '1';
+        }
+      }
+    } catch (e) {
+      // 設定が取れない時は広告も隠さない
+    } finally {
+      adsFetching = false;
+    }
+  }
+
   // ─── マイリスト数の表示（Fork版で追加） ─────────────
   // サムネイル左下に「マイリスト N」のバッジを重ねる（クリックは透過）。
   const countsChecked = new Set();
@@ -381,6 +413,116 @@
       // 取得に失敗した時は表示しない（次回のスキャンで再試行する）
     } finally {
       countsFetching = false;
+    }
+  }
+
+  // ─── あとで見るページの一括追加（Fork版で追加） ────
+  let bulkRunning = false;
+
+  function ensureBulkBar() {
+    if (document.querySelector('.nl-bulk-bar')) return;
+    if (!injected.length) return;
+    const bar = document.createElement('div');
+    bar.className = 'nl-bulk-bar';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'nl-bulk-btn';
+    btn.textContent = 'このページの動画をNicoListへ一括追加';
+    btn.addEventListener('click', openBulkPicker);
+    bar.appendChild(btn);
+    document.body.appendChild(bar);
+  }
+
+  async function addQuiet(btn, videoId, listId) {
+    try {
+      const info = await chrome.runtime.sendMessage({ action: 'fetchVideoInfo', videoId });
+      if (!info || info.error || !info.title) return 'failed';
+      const result = await chrome.runtime.sendMessage({ action: 'addVideo', listId, videoInfo: info });
+      if (result && result.success) { setAdded(btn); return 'added'; }
+      if (result && /既に/.test(result.message || '')) { setAdded(btn); return 'exists'; }
+      return 'failed';
+    } catch (e) {
+      return 'failed';
+    }
+  }
+
+  async function openBulkPicker() {
+    if (bulkRunning) return;
+    closePicker();
+    const lists = await chrome.runtime.sendMessage({ action: 'getAllLists' }) || [];
+    const overlay = document.createElement('div');
+    overlay.className = 'nl-picker-overlay';
+    const modal = document.createElement('div');
+    modal.className = 'nl-picker-modal';
+    const header = document.createElement('div');
+    header.className = 'nl-picker-header';
+    const title = document.createElement('span');
+    title.textContent = '一括追加先のリストを選択';
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'nl-picker-close';
+    closeBtn.textContent = '✕';
+    closeBtn.addEventListener('click', closePicker);
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    if (!lists.length) {
+      const empty = document.createElement('div');
+      empty.className = 'nl-picker-empty';
+      empty.textContent = 'リストがありません。拡張機能のポップアップからリストを作成してください。';
+      modal.appendChild(empty);
+    } else {
+      const listBox = document.createElement('div');
+      listBox.className = 'nl-picker-list';
+      lists.forEach((list) => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'nl-picker-item';
+        const name = document.createElement('span');
+        name.textContent = list.name;
+        const count = document.createElement('span');
+        count.className = 'nl-picker-count';
+        count.textContent = `${list.videoCount || 0}動画`;
+        item.appendChild(name);
+        item.appendChild(count);
+        item.addEventListener('click', async () => {
+          closePicker();
+          await runBulkAdd(list);
+        });
+        listBox.appendChild(item);
+      });
+      modal.appendChild(listBox);
+      const note = document.createElement('div');
+      note.className = 'nl-picker-note';
+      note.textContent = `このページで見つかった ${injected.length} 件を、選んだリストへまとめて追加します。追加済みの動画はスキップされます`;
+      modal.appendChild(note);
+    }
+
+    overlay.appendChild(modal);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closePicker(); });
+    document.body.appendChild(overlay);
+  }
+
+  async function runBulkAdd(list) {
+    if (bulkRunning) return;
+    bulkRunning = true;
+    const btn = document.querySelector('.nl-bulk-btn');
+    const targets = injected.slice();
+    let added = 0, exists = 0, failed = 0, done = 0;
+    try {
+      for (const r of targets) {
+        const status = await addQuiet(r.btn, r.videoId, list.id);
+        if (status === 'added') added++;
+        else if (status === 'exists') exists++;
+        else failed++;
+        done++;
+        if (btn) btn.textContent = `追加中… ${done}/${targets.length}`;
+      }
+      showToast(`一括追加が終わりました：${added}件を追加、${exists}件は追加済み、${failed}件は失敗`);
+    } finally {
+      bulkRunning = false;
+      if (btn) btn.textContent = 'このページの動画をNicoListへ一括追加';
     }
   }
 

@@ -77,6 +77,18 @@
       if (status) status.textContent = tags.length ? `${tags.length}件のタグを保存しました（開いている検索ページは再読み込みで反映）` : 'ミュートタグを空にしました';
     });
   }
+  // ニコニ広告を隠す設定（Fork版で追加）
+  const hideAdsCheckbox = document.getElementById('checkbox-hide-ads');
+  if (hideAdsCheckbox) {
+    hideAdsCheckbox.addEventListener('change', async () => {
+      const settings = await chrome.runtime.sendMessage({ action: 'getSettings' }) || {};
+      settings.hideAds = hideAdsCheckbox.checked;
+      await chrome.runtime.sendMessage({ action: 'saveSettings', settings });
+      const status = document.getElementById('hide-ads-status');
+      if (status) status.textContent = hideAdsCheckbox.checked ? 'ニコニ広告を隠します（開いている検索ページは再読み込みで反映）' : 'ニコニ広告を表示します';
+    });
+  }
+
   document.getElementById('btn-fullview').addEventListener('click', async () => {
     await chrome.runtime.sendMessage({ action: 'openFullView' });
     window.close();
@@ -113,6 +125,10 @@
     const mutedTagsTextarea = document.getElementById('textarea-muted-tags');
     if (mutedTagsTextarea) {
       mutedTagsTextarea.value = (settings.mutedTags || []).join('\n');
+    }
+    // ニコニ広告設定の復元（Fork版で追加）
+    if (hideAdsCheckbox) {
+      hideAdsCheckbox.checked = settings.hideAds !== false;
     }
     // クイック追加モードの復元
     if (quickAddModeSelect) {
