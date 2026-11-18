@@ -387,10 +387,12 @@
   }
 
   // ─── 補充表示（Fork版で追加） ───────────────────────
-  // フィルタで隠れた分を、次のページから条件を通った動画で補充する。
-  // 次ページのHTMLを取得してカードを移植する方式（最大5ページ先まで）。
+  // フィルタで隠れた分を、検索APIで「今のページの続き」を取得して補充する。
+  // ニコニコの検索ページは開いた直後のHTMLにカードが含まれない（JS描画）ため、
+  // ページ取得＋カード移植ではなく、APIの情報からカードを組み立てて並べる。
   const backfillState = { key: null, running: false, done: false };
-  const BACKFILL_MAX_PAGES = 5;
+  const BACKFILL_MAX_FETCHES = 3;
+  const PAGE_SIZE = 32;
 
   function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
@@ -399,10 +401,36 @@
     return m ? parseInt(m[1], 10) : 1;
   }
 
-  function pageUrl(n) {
-    const u = new URL(location.href);
-    u.searchParams.set('page', String(n));
-    return u.toString();
+  // ページのURLから検索条件を取り出す。対応できないページでは null。
+  const SORT_FIELD_MAP = {
+    registeredAt: 'startTime',
+    startTime: 'startTime',
+    viewCount: 'viewCounter',
+    viewCounter: 'viewCounter',
+    commentCount: 'commentCounter',
+    commentCounter: 'commentCounter',
+    mylistCount: 'mylistCounter',
+    mylistCounter: 'mylistCounter',
+    likeCount: 'likeCounter',
+    likeCounter: 'likeCounter',
+    duration: 'lengthSeconds',
+    lengthSeconds: 'lengthSeconds'
+  };
+
+  function parseSearchContext() {
+    const path = location.pathname || '';
+    const m = /^\/(search|tag)\/(.+)$/.exec(path);
+    if (!m) return null;
+    let q;
+    try {
+      q = decodeURIComponent(m[2]);
+    } catch (e) { return null; }
+    if (!q) return null;
+    const targets = m[1] === 'tag' ? 'tagsExact' : 'title,description,tags';
+    const params = new URLSearchParams(location.search || '');
+    const field = SORT_FIELD_MAP[params.get('sort') || 'registeredAt'] || 'startTime';
+    const sort = (params.get('order') === 'desc' ? '-' : '+') + field;
+    return { q, targets, sort };
   }
 
   async function waitForEvaluations() {
@@ -412,23 +440,74 @@
     }
   }
 
-  function extractCards(doc) {
-    const out = [];
-    const seenCards = new Set();
-    const anchors = doc.querySelectorAll('a[href*="/watch/"]');
-    anchors.forEach((a) => {
-      if (!a.querySelector('img')) return;
-      const href = a.getAttribute('href') || '';
-      if (!href.startsWith('/watch/') && !href.includes('nicovideo.jp/watch/')) return;
-      const m = href.match(WATCH_RE);
-      if (!m) return;
-      const videoId = m[1];
-      const card = findCard(a);
-      if (seenCards.has(card)) return;
-      seenCards.add(card);
-      out.push({ card, videoId });
-    });
-    return out;
+  function formatDuration(sec) {
+    if (typeof sec !== 'number' || !isFinite(sec)) return '';
+    const s = Math.max(0, Math.floor(sec));
+    const h = Math.floor(s / 3600);
+    const mm = Math.floor((s % 3600) / 60);
+    const ss = String(s % 60).padStart(2, '0');
+    return h > 0 ? `${h}:${String(mm).padStart(2, '0')}:${ss}` : `${mm}:${ss}`;
+  }
+
+  function formatDate(iso) {
+    const d = new Date(iso || '');
+    if (isNaN(d.getTime())) return '';
+    return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+  }
+
+  function formatNum(n) {
+    return typeof n === 'number' ? n.toLocaleString('ja-JP') : '';
+  }
+
+  // APIの情報から補充カードを組み立てる（ネイティブカードに近い見た目）
+  function buildBackfillCard(item) {
+    const card = document.createElement('div');
+    card.className = 'nl-bf-card';
+    card.dataset.nlBackfilled = '1';
+
+    const thumb = document.createElement('a');
+    thumb.className = 'nl-bf-thumb';
+    thumb.href = `/watch/${item.videoId}`;
+    const img = document.createElement('img');
+    img.alt = '';
+    img.loading = 'lazy';
+    if (item.thumbnailUrl) {
+      const base = item.thumbnailUrl;
+      const middle = /\/(?:[^/]+)\.(S|M|L)$/.test(base) ? base : `${base}.M`;
+      img.src = middle;
+      img.addEventListener('error', () => {
+        if (img.src !== base) img.src = base;
+      }, { once: true });
+    }
+    thumb.appendChild(img);
+    const dur = formatDuration(item.lengthSeconds);
+    if (dur) {
+      const chip = document.createElement('span');
+      chip.className = 'nl-bf-dur';
+      chip.textContent = dur;
+      thumb.appendChild(chip);
+    }
+    card.appendChild(thumb);
+
+    const title = document.createElement('a');
+    title.className = 'nl-bf-title';
+    title.href = `/watch/${item.videoId}`;
+    title.textContent = item.title || '';
+    title.title = item.title || '';
+    card.appendChild(title);
+
+    const metaBits = [];
+    const date = formatDate(item.startTime);
+    if (date) metaBits.push(date);
+    if (item.viewCounter != null) metaBits.push(`再生 ${formatNum(item.viewCounter)}`);
+    if (item.commentCounter != null) metaBits.push(`コメント ${formatNum(item.commentCounter)}`);
+    if (metaBits.length) {
+      const meta = document.createElement('div');
+      meta.className = 'nl-bf-meta';
+      meta.textContent = metaBits.join(' · ');
+      card.appendChild(meta);
+    }
+    return card;
   }
 
   async function maybeBackfill() {
@@ -470,51 +549,48 @@
     const container = firstCard && firstCard.parentElement;
     if (!container) { backfillState.done = true; return; }
 
+    const ctx = parseSearchContext();
+    if (!ctx) { backfillState.done = true; return; }
+
     backfillState.running = true;
     try {
       const seenIds = new Set(injected.map((r) => r.videoId));
       const mutedSet = new Set(mutedTags);
-      let nextPage = currentPageNumber() + 1;
-      let fetched = 0;
+      let offset = currentPageNumber() * PAGE_SIZE;
+      let fetches = 0;
 
-      while (visible < totalCards && fetched < BACKFILL_MAX_PAGES) {
-        let html;
-        try {
-          const res = await fetch(pageUrl(nextPage), { credentials: 'include' });
-          if (!res.ok) break;
-          html = await res.text();
-        } catch (e) { break; }
-        fetched++;
-        nextPage++;
+      while (visible < totalCards && fetches < BACKFILL_MAX_FETCHES) {
+        const res = await chrome.runtime.sendMessage({
+          action: 'fetchSearchBackfill',
+          q: ctx.q, targets: ctx.targets, sort: ctx.sort,
+          offset, limit: 100
+        });
+        fetches++;
+        const items = (res && res.success && res.items) || [];
+        if (!items.length) break;
+        offset += items.length;
 
-        const doc = new DOMParser().parseFromString(html, 'text/html');
-        const candidates = extractCards(doc).filter((c) => !seenIds.has(c.videoId));
-        if (!candidates.length) break;
-        candidates.forEach((c) => seenIds.add(c.videoId));
+        const fresh = items.filter((it) => !seenIds.has(it.videoId));
+        fresh.forEach((it) => seenIds.add(it.videoId));
+        if (!fresh.length) continue;
 
-        const ids = candidates.map((c) => c.videoId);
         let tagsById = {};
-        let countsById = {};
         if (hasMute) {
-          const tr = await chrome.runtime.sendMessage({ action: 'fetchVideoTagsBatch', videoIds: ids });
+          const tr = await chrome.runtime.sendMessage({
+            action: 'fetchVideoTagsBatch',
+            videoIds: fresh.map((it) => it.videoId)
+          });
           tagsById = (tr && tr.tagsById) || {};
         }
-        if (threshold > 0) {
-          const cr = await chrome.runtime.sendMessage({ action: 'fetchVideoCountsBatch', videoIds: ids });
-          countsById = (cr && cr.countsById) || {};
-        }
 
-        for (const c of candidates) {
+        for (const it of fresh) {
           if (visible >= totalCards) break;
           if (hasMute) {
-            const tags = (tagsById[c.videoId] || []).map(normalizeTag);
+            const tags = (tagsById[it.videoId] || []).map(normalizeTag);
             if (tags.some((t) => mutedSet.has(t))) continue;
           }
-          if (threshold > 0) {
-            const n = countsById[c.videoId];
-            if (typeof n === 'number' && n < threshold) continue;
-          }
-          container.appendChild(c.card);
+          if (threshold > 0 && typeof it.mylistCounter === 'number' && it.mylistCounter < threshold) continue;
+          container.appendChild(buildBackfillCard(it));
           visible++;
         }
       }
@@ -526,6 +602,7 @@
       backfillState.running = false;
     }
   }
+
 
   // ─── 再描画への追従（並び替え・ページ遷移はSPAで差し替わる） ──
   let scanTimer = null;
